@@ -36,10 +36,6 @@ function stripHttpStatusPrefix(message: string): string {
   return message.replace(HTTP_STATUS_PREFIX_PATTERN, "");
 }
 
-function stripTrailingPeriod(message: string): string {
-  return message.replace(TRAILING_PERIOD_PATTERN, "");
-}
-
 function isAbortLikeError(error: unknown): boolean {
   return toRecord(error)?.name === "AbortError";
 }
@@ -180,13 +176,22 @@ export function showMutationErrorToast({
     return;
   }
 
-  const message = stripTrailingPeriod(
-    getMutationErrorMessage({
-      error,
-      fallbackMessage,
-      lifecycleOperation,
-    }),
-  );
+  const lifecycleDescription = describeLifecycleError({
+    error,
+    operation: lifecycleOperation,
+  });
+  if (lifecycleDescription) {
+    appToast.error(lifecycleDescription.title, {
+      description: lifecycleDescription.body,
+    });
+    return;
+  }
+
+  const message = getMutationErrorMessage({
+    error,
+    fallbackMessage,
+    lifecycleOperation,
+  }).replace(TRAILING_PERIOD_PATTERN, "");
   if (message === GENERIC_REQUEST_FAILED_MESSAGE) {
     appToast.error("Request failed", {
       description: "Please try again",
@@ -194,5 +199,12 @@ export function showMutationErrorToast({
     return;
   }
 
-  appToast.error(message);
+  const title = normalizeMessage(fallbackMessage).replace(
+    TRAILING_PERIOD_PATTERN,
+    "",
+  );
+  appToast.error(
+    title,
+    message === title ? undefined : { description: message },
+  );
 }

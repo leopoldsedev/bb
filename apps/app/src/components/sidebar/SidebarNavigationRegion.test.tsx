@@ -11,9 +11,13 @@ import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlo
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
-  type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
+import {
+  getNotifications,
+  resetNotificationStore,
+} from "@/lib/notifications/notification-store";
 import { SidebarNavigationRegion } from "./SidebarNavigationRegion";
+import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 
 const mocks = vi.hoisted(() => ({
   dispatch: vi.fn(),
@@ -63,21 +67,6 @@ vi.mock("./usePaneContentSplitDrag", () => ({
     openInSplit: vi.fn(),
   }),
 }));
-
-function registrationSet(
-  overrides: Partial<PluginRegistrationSet>,
-): PluginRegistrationSet {
-  return {
-    homepageSections: [],
-    settingsSections: [],
-    navPanels: [],
-    threadPanelActions: [],
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
-    ...overrides,
-  };
-}
 
 function Replacement({
   experimental_Original: Original,
@@ -180,6 +169,7 @@ afterEach(() => {
   cleanup();
   resetAllCrashedPluginSlotsForTest();
   resetPluginSlotStoreForTest();
+  resetNotificationStore();
   window.localStorage.clear();
   vi.restoreAllMocks();
   mocks.dispatch.mockReset();
@@ -263,5 +253,12 @@ describe("SidebarNavigationRegion", () => {
     fireEvent.click(screen.getByRole("button", { name: "Crash replacement" }));
     expect(screen.getByTestId("built-in-sidebar-navigation")).toBeDefined();
     expect(ownerMount).toHaveBeenCalledTimes(2);
+    expect(getNotifications()).toEqual([
+      expect.objectContaining({
+        title: "Sidebar navigation plugin crashed",
+        description:
+          "Garden Navbar (garden) stopped working, so bb's own navigation is back.",
+      }),
+    ]);
   });
 });
