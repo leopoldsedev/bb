@@ -349,7 +349,7 @@ describe("PluginNavSidebarItems", () => {
     expect(screen.queryByText("Plugins")).toBeNull();
   });
 
-  it("shows one plugin without a More row and reaches Customize from the row menu", async () => {
+  it("shows one plugin without a More row", () => {
     registerPanel("docs", "Docs");
     renderSidebarItems();
 
@@ -360,13 +360,9 @@ describe("PluginNavSidebarItems", () => {
       screen.queryByRole("button", { name: "Customize sidebar navigation" }),
     ).toBeNull();
 
-    await openCustomizeFromContextMenu(
-      screen.getByRole("button", { name: "Docs" }),
-    );
-
-    expect(customizeRows().map((row) => row.textContent?.trim())).toEqual([
-      "Docs",
-    ]);
+    expect(
+      screen.queryByRole("button", { name: "Docs panel options" }),
+    ).not.toBeNull();
   });
 
   it("keeps an accessory-less plugin row unchanged", () => {
@@ -861,10 +857,12 @@ describe("PluginNavSidebarItems", () => {
   it("keeps launch and visibility as distinct targets with a clear row hover state", async () => {
     const labels = ["One", "Two", "Three", "Four"];
     labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
-    const { store, unmount } = renderSidebarItems();
+    const { store, unmount } = renderSidebarItems({
+      builtInEntries: [builtInEntry("new-thread", "New thread")],
+    });
 
     await openCustomizeFromContextMenu(
-      screen.getByRole("button", { name: "One" }),
+      screen.getByRole("button", { name: "New thread" }),
     );
     const choices = screen.getAllByRole("checkbox");
     await waitFor(() =>
@@ -872,9 +870,10 @@ describe("PluginNavSidebarItems", () => {
         document.activeElement?.getAttribute(
           "data-sidebar-navigation-customize-launch",
         ),
-      ).toBe("plugin-0/main"),
+      ).toBe("__bb__/new-thread"),
     );
     expect(choices.map((choice) => choice.getAttribute("data-state"))).toEqual([
+      "checked",
       "checked",
       "checked",
       "checked",
@@ -882,16 +881,17 @@ describe("PluginNavSidebarItems", () => {
     ]);
     expect(
       document.querySelectorAll("[data-plugin-nav-customize-drag-handle]"),
-    ).toHaveLength(4);
+    ).toHaveLength(5);
     expect(
       customizeRows()[0]?.classList.contains("hover:bg-sidebar-accent"),
     ).toBe(true);
 
-    fireEvent.click(choices[0]!);
+    fireEvent.click(choices[1]!);
     expect(
       screen.getByRole("list", { name: "Sidebar navigation" }),
     ).not.toBeNull();
     expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([
+      "__bb__/new-thread",
       "plugin-1/main",
       "plugin-2/main",
       "plugin-3/main",
@@ -1115,15 +1115,20 @@ describe("PluginNavSidebarItems", () => {
 
   it("preserves modifier-click when launching a plugin from Customize", async () => {
     registerPanel("docs", "Docs");
-    const { store } = renderSidebarItems({ splitEnabled: true });
+    const { store } = renderSidebarItems({
+      builtInEntries: [builtInEntry("new-thread", "New thread")],
+      splitEnabled: true,
+    });
 
     await openCustomizeFromContextMenu(
-      screen.getByRole("button", { name: "Docs" }),
+      screen.getByRole("button", { name: "New thread" }),
     );
-    const row = customizeRows()[0];
-    expect(row).toBeDefined();
+    const row = customizeRows().find((item) =>
+      item.textContent?.includes("Docs"),
+    );
+    if (!row) throw new Error("Docs customization row is missing");
     fireEvent.click(
-      within(row as HTMLElement).getByRole("button", { name: "Docs" }),
+      within(row).getByRole("button", { name: "Docs" }),
       { metaKey: true },
     );
 
