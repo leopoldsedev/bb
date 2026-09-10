@@ -21,6 +21,12 @@ export interface ResponsiveOverlayContextValue {
 
 const RESPONSIVE_DRAWER_REALIZE_FALLBACK_MS = 120;
 
+export const COMPACT_SHEET_CONTENT_STYLE: React.CSSProperties = {
+  width: "auto",
+  minWidth: "auto",
+  maxWidth: "none",
+};
+
 function resetDrawerKeyboardStyles(drawerElement: HTMLElement | null): void {
   if (drawerElement === null) return;
 
@@ -176,6 +182,7 @@ export function stripRadixContentProps<T extends Record<string, unknown>>(
 interface ResponsiveDrawerShellProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  closeOnBackdropClick?: boolean;
   onAfterCloseAutoFocus?: () => void;
   srLabel?: string;
   labelledBy?: string;
@@ -238,6 +245,7 @@ export function ResponsiveDrawerShell({
   open,
   onOpenChange,
   onAfterCloseAutoFocus,
+  closeOnBackdropClick = true,
   srLabel,
   labelledBy,
   describedBy,
@@ -256,6 +264,7 @@ export function ResponsiveDrawerShell({
       open={open}
       onOpenChange={onOpenChange}
       onAfterCloseAutoFocus={onAfterCloseAutoFocus}
+      closeOnBackdropClick={closeOnBackdropClick}
       srLabel={srLabel}
       labelledBy={labelledBy}
       describedBy={describedBy}
@@ -278,6 +287,7 @@ export function ResponsiveDrawerShell({
 interface PersistentResponsiveDrawerShellProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  closeOnBackdropClick?: boolean;
   onAfterCloseAutoFocus?: () => void;
   srLabel?: string;
   labelledBy?: string;
@@ -480,8 +490,7 @@ export function usePersistentOverlayFocus({
               }
               onAfterCloseAutoFocus?.();
             });
-            cancelDeferredFocus = () =>
-              ownerWindow.cancelAnimationFrame(frame);
+            cancelDeferredFocus = () => ownerWindow.cancelAnimationFrame(frame);
           }
         }
       }
@@ -508,6 +517,7 @@ export function PersistentResponsiveDrawerShell({
   open,
   onOpenChange,
   onAfterCloseAutoFocus,
+  closeOnBackdropClick = true,
   srLabel,
   labelledBy,
   describedBy,
@@ -670,7 +680,7 @@ export function PersistentResponsiveDrawerShell({
           pointerEvents: open ? "auto" : "none",
           transition: backdropTransition,
         }}
-        onClick={requestClose}
+        onClick={closeOnBackdropClick ? requestClose : undefined}
         onTouchMove={(event) => event.preventDefault()}
       />
       <div

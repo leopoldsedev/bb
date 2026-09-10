@@ -30,6 +30,7 @@ import {
   threadWithRuntimeSchema,
 } from "@bb/domain";
 import type { CallerExecutionInputSource } from "@bb/domain";
+import { THREAD_EVENT_LIST_PAGE_SIZE } from "../common.js";
 import {
   timelineDeltaSchema,
   timelineRowSchema,
@@ -167,10 +168,11 @@ export const forkThreadRequestSchema = z
     title: z.string().min(1).optional(),
     permissionMode: permissionModeInputSchema.optional(),
     visibility: threadVisibilitySchema.default("visible"),
-    workspace: z.enum(["isolated", "reuse"]).default("isolated"),
+    environment: createThreadEnvironmentArgsSchema.optional(),
     origin: threadCreateOriginSchema.default("sdk"),
     originPluginId: z.string().min(1).optional(),
   })
+  .strict()
   .superRefine((value, ctx) => {
     if (value.origin === "plugin" && value.originPluginId === undefined) {
       ctx.addIssue({
@@ -231,12 +233,7 @@ export const sendMessageResponseSchema = z.discriminatedUnion("delivery", [
   z.object({
     ok: z.literal(true),
     delivery: z.literal("queued"),
-    /** The row now carrying this message; addressable for send-now or cancel. */
-    queuedMessageId: z.string().min(1),
-    /** Why it is waiting, as the card and `bb thread queue` render it. */
-    waitingOn: queuedMessageWaitingOnSchema,
-    /** The row's scheduled instant, when it has one. */
-    sendAt: z.number().int().nonnegative().nullable(),
+    queuedMessage: threadQueuedMessageSchema,
   }),
 ]);
 export type SendMessageResponse = z.infer<typeof sendMessageResponseSchema>;
@@ -366,10 +363,7 @@ export type SetQueuedMessageGroupBoundaryRequest = z.infer<
   typeof setQueuedMessageGroupBoundaryRequestSchema
 >;
 
-export const sendQueuedMessageResponseSchema = z.object({
-  ok: z.literal(true),
-  queuedMessage: threadQueuedMessageSchema,
-});
+export const sendQueuedMessageResponseSchema = sendMessageResponseSchema;
 export type SendQueuedMessageResponse = z.infer<
   typeof sendQueuedMessageResponseSchema
 >;
@@ -690,6 +684,7 @@ export type ThreadArchiveAllResponse = z.infer<
 
 export const threadListQuerySchema = z.object({
   projectId: z.string().min(1).optional(),
+  environmentId: z.string().min(1).optional(),
   parentThreadId: z.string().min(1).optional(),
   sourceThreadId: z.string().min(1).optional(),
   archived: z.enum(["true", "false"]).optional(),
@@ -854,7 +849,13 @@ export const threadEventsQuerySchema = z
   .object({
     afterSeq: z.string().regex(/^\d+$/),
     beforeSeq: z.string().regex(/^\d+$/),
-    limit: z.string().regex(/^\d+$/),
+    limit: z
+      .string()
+      .regex(/^\d+$/)
+      .refine(
+        (value) => Number(value) <= THREAD_EVENT_LIST_PAGE_SIZE,
+        `Thread event limit cannot exceed ${THREAD_EVENT_LIST_PAGE_SIZE}`,
+      ),
     order: z.enum(["asc", "desc"]),
     types: z.string().refine(
       (value) =>
@@ -938,6 +939,7 @@ export type TimelineTurnSummaryDetailsResponse = z.infer<
 
 export const threadTimelineResponseSchema = z.object({
   rows: z.array(timelineRowSchema),
+  contextBoundarySeq: z.number().int().nonnegative().nullable(),
   activePromptMode: threadTimelineActivePromptModeSchema.nullable(),
   activeThinking: activeThinkingSchema.nullable(),
   activeWorkflows: z.array(timelineWorkflowWorkRowSchema),

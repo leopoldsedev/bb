@@ -83,6 +83,7 @@ export const APP_SHELL_MARKS = [
   "code-renderers",
   "thread-panel",
   "file-opener",
+  "app-overlay",
   "content-scripts",
 ] as const;
 
@@ -518,9 +519,14 @@ const SIDEBAR_THREADS: readonly { title: string; glyph?: "spin" | "dot" }[] = [
 
 const FOOTER_ITEM_RENDERERS: Record<string, () => ReactNode> = {
   settings: () => <MiniIcon icon={Settings02Icon} className="size-4" />,
-  "plugin-footer-actions": () => (
-    <span className="flex size-5.5 items-center justify-center rounded-md bg-state-hover">
-      <PluginGlyph className="size-3.5" />
+  "plugin-footer-items": () => (
+    <span className="flex items-center gap-1.5">
+      <span className="flex size-5.5 items-center justify-center rounded-md">
+        <PluginGlyph className="size-3.5" />
+      </span>
+      <span className="flex size-5.5 items-center justify-center rounded-md bg-state-hover">
+        <PluginGlyph className="size-3.5" />
+      </span>
     </span>
   ),
   "bug-report": () => <MiniIcon icon={Bug01Icon} className="size-4" />,
@@ -619,12 +625,34 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
   footer: () => (
     <Mark
       id="sidebar-footer"
-      label="Plugin footer buttons, between Settings and Report a bug"
-      className="mx-1.5 mb-1.5 flex w-fit items-center gap-2 px-2.5 py-2"
+      label="Plugin footer items can run actions or reveal content"
+      className="mx-1.5 mb-1.5 flex w-44 flex-col gap-1.5 p-1.5"
     >
-      {anatomy.sidebarFooter.map((key) => (
-        <Fragment key={key}>{FOOTER_ITEM_RENDERERS[key]?.()}</Fragment>
-      ))}
+      <span className="block w-full overflow-hidden rounded-md border border-border bg-surface-raised-solid">
+        <span className="flex h-6 items-center gap-1 border-b border-border px-1.5">
+          <span className="flex size-4 items-center justify-center rounded bg-state-hover text-2xs text-foreground">
+            A
+          </span>
+          <span className="flex size-4 items-center justify-center rounded text-2xs">
+            B
+          </span>
+          <span className="ml-auto text-2xs">×</span>
+        </span>
+        <span className="block space-y-1.5 p-2">
+          <span className="flex items-center justify-between text-2xs">
+            <span>5-hour limit</span>
+            <span className="text-warning">18% left</span>
+          </span>
+          <span className="block h-1 overflow-hidden rounded-full bg-muted">
+            <span className="block h-full w-4/5 rounded-full bg-warning" />
+          </span>
+        </span>
+      </span>
+      <span className="flex w-full items-center gap-2 px-1 py-0.5">
+        {anatomy.sidebarFooter.map((key) => (
+          <Fragment key={key}>{FOOTER_ITEM_RENDERERS[key]?.()}</Fragment>
+        ))}
+      </span>
     </Mark>
   ),
 };
@@ -1169,6 +1197,20 @@ function AppShellWireframeBody({
           onTabSelect={onRightPanelTabSelect}
         />
       </div>
+
+      <Mark
+        id="app-overlay"
+        label="App-wide floating plugin interface"
+        className="absolute bottom-24 right-12 z-[6] flex w-44 items-center gap-2 border border-border bg-popover px-3 py-2 text-foreground shadow-md"
+      >
+        <PluginGlyph className="size-4 shrink-0" />
+        <span className="min-w-0">
+          <span className="block truncate font-medium">Floating widget</span>
+          <span className="block truncate text-2xs text-subtle-foreground">
+            2 agents active
+          </span>
+        </span>
+      </Mark>
     </WindowFrame>
   );
 }
@@ -1738,6 +1780,20 @@ export function SettingsWireframe() {
                 className="mt-0.5 flex h-4.5 w-8 shrink-0 items-center rounded-full bg-foreground/60 p-0.5"
               >
                 <span className="ml-auto size-3.5 rounded-full bg-background" />
+              </span>
+            </span>
+            <span className="flex items-start justify-between gap-3 py-1.5">
+              <span className="min-w-0">
+                <span className="block text-foreground">Retry attempts</span>
+                <span className="block pt-1 leading-relaxed">
+                  Maximum retries before stopping.
+                </span>
+              </span>
+              <span
+                aria-hidden
+                className="flex h-6 w-32 shrink-0 items-center rounded-md border border-border bg-card px-2 text-xs text-foreground"
+              >
+                3
               </span>
             </span>
             <span className="block py-1.5">

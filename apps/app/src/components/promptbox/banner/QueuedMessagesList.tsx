@@ -14,6 +14,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useSenderThreadMetadataById } from "@/hooks/useSenderThreadMetadataById";
 import { useSecondTick } from "@/hooks/useSecondTick";
 import { usePluginDisplayName } from "@/lib/plugin-logos";
 import {
@@ -88,7 +89,10 @@ import {
   type QueuedMessageReorderRequest,
 } from "@/lib/queued-message-reorder";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
-import { shiftMentionsToTextRange } from "@/components/thread/timeline/ConversationMessageMentions";
+import {
+  PromptMentionPill,
+  shiftMentionsToTextRange,
+} from "@/components/thread/timeline/ConversationMessageMentions";
 import {
   buildPromptMentionComponent,
   remarkPromptMentions,
@@ -101,6 +105,7 @@ import {
 } from "@/components/promptbox/queued-editor-typeahead-layout";
 
 export type QueuedMessageProcessingAction = "send" | "edit" | "delete";
+export type QueuedMessageSendAction = "send-now" | "steer-when-ready";
 
 export interface QueuedMessageGroupBoundaryRequest {
   expectedGroupedPrefixQueuedMessageIds: string[];
@@ -123,12 +128,13 @@ export interface QueuedMessagesListProps {
   attachedToComposer: boolean;
   queuedMessages: readonly ThreadQueuedMessage[];
   resolveMentionLink?: PromptMentionLinkResolver;
+  sendAction: QueuedMessageSendAction;
   sendDisabled: boolean;
   actionDisabled: boolean;
   processingMessageId: string | null;
   processingAction: QueuedMessageProcessingAction | null;
   inlineEditor?: QueuedMessageInlineEditor;
-  onSendImmediately: (id: string) => void;
+  onSend: (id: string) => void;
   onReorder: (request: QueuedMessageReorderRequest) => void;
   onSetGroupBoundary: (request: QueuedMessageGroupBoundaryRequest) => void;
   onEdit: (request: QueuedMessageEditRequest) => void;
@@ -145,15 +151,17 @@ interface QueuedMessagePreviewText {
 }
 
 interface QueuedMessageRowProps {
+  senderLabel: string | null;
   queuedMessage: ThreadQueuedMessage;
   resolveMentionLink?: PromptMentionLinkResolver;
   index: number;
   isProcessing: boolean;
   processingLabel: string;
   dragDisabled: boolean;
+  sendAction: QueuedMessageSendAction;
   sendDisabled: boolean;
   actionDisabled: boolean;
-  onSendImmediately: (id: string) => void;
+  onSend: (id: string) => void;
   onEdit: (request: QueuedMessageEditRequest) => void;
   onDelete: (id: string) => void;
   compact: boolean;
@@ -168,6 +176,7 @@ const DRAWER_CHROME_HEIGHT = 1 + 32 + 12 + 2;
 const DRAWER_LIST_PADDING = 8;
 const DRAWER_ROW_HEIGHT = 33;
 const DRAWER_SECOND_LINE_HEIGHT = 16;
+const DRAWER_SENDER_PILL_LINE_HEIGHT = 22;
 const WORKSPACE_MIN_HEIGHT = 240;
 const WORKSPACE_MAX_HEIGHT = 360;
 const WORKSPACE_CHROME_HEIGHT = 56;
@@ -192,9 +201,13 @@ function getDrawerHeight({
           (total, queuedMessage) =>
             total +
             DRAWER_ROW_HEIGHT +
-            (queuedMessageHasWaitLine(queuedMessage) ||
+            (queuedMessage.initiator !== "user" ||
+            queuedMessageHasWaitLine(queuedMessage) ||
             queuedMessage.id === processingMessageId
-              ? DRAWER_SECOND_LINE_HEIGHT
+              ? queuedMessage.initiator === "agent" &&
+                queuedMessage.senderThreadId !== null
+                ? DRAWER_SENDER_PILL_LINE_HEIGHT
+                : DRAWER_SECOND_LINE_HEIGHT
               : 0),
           0,
         );
@@ -701,7 +714,7 @@ function QueuedMessageWaitLine({
       data-queued-message-wait=""
       data-queued-message-failed={failed ? "" : undefined}
       className={cn(
-        "mt-0.5 flex min-w-0 items-center gap-1 text-2xs",
+        "flex min-w-0 items-center gap-1 text-2xs",
         failed ? "text-destructive-text" : "text-subtle-foreground",
       )}
     >
@@ -720,7 +733,7 @@ function QueuedMessageProcessingLine({ label }: { label: string }) {
   return (
     <div
       data-queued-message-processing=""
-      className="mt-0.5 flex min-w-0 items-center gap-1 text-2xs text-muted-foreground"
+      className="flex min-w-0 items-center gap-1 text-2xs text-muted-foreground"
     >
       <Icon
         name="Spinner"
@@ -733,15 +746,17 @@ function QueuedMessageProcessingLine({ label }: { label: string }) {
 }
 
 const QueuedMessageRow = memo(function QueuedMessageRow({
+  senderLabel,
   queuedMessage,
   resolveMentionLink,
   index,
   isProcessing,
   processingLabel,
   dragDisabled,
+  sendAction,
   sendDisabled,
   actionDisabled,
-  onSendImmediately,
+  onSend,
   onEdit,
   onDelete,
   compact,
@@ -757,7 +772,15 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
       : "",
   );
   const hasWaitLine = queuedMessageHasWaitLine(queuedMessage);
-  const sendNowAllowed = isQueuedMessageSendNowAllowed(queuedMessage.waitingOn);
+  const sendAllowed =
+    sendAction === "steer-when-ready" ||
+    isQueuedMessageSendNowAllowed(queuedMessage.waitingOn);
+  const sendAriaLabel =
+    sendAction === "steer-when-ready"
+      ? `Steer queued message ${index + 1} when ready`
+      : `Send queued message ${index + 1} now`;
+  const sendLabel =
+    sendAction === "steer-when-ready" ? "Steer when ready" : "Send now";
   const {
     attributes,
     isDragging,
@@ -818,7 +841,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
         <div
           className={cn(
             "min-w-0 flex-1 py-1",
-            (hasWaitLine || isProcessing) && "py-1.5",
+            (senderLabel !== null || hasWaitLine || isProcessing) && "py-1.5",
           )}
         >
           <div className="flex min-w-0 items-center gap-1">
@@ -847,13 +870,53 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
               </span>
             ) : null}
           </div>
-          {isProcessing ? (
-            <QueuedMessageProcessingLine label={processingLabel} />
-          ) : hasWaitLine ? (
-            <QueuedMessageWaitLine
-              pluginDisplayName={pluginDisplayName}
-              queuedMessage={queuedMessage}
-            />
+          {senderLabel !== null || isProcessing || hasWaitLine ? (
+            <div
+              data-queued-message-metadata=""
+              className="mt-0.5 flex min-w-0 items-center gap-1 text-2xs text-subtle-foreground"
+            >
+              {senderLabel === null ? null : (
+                <span
+                  data-queued-message-sender=""
+                  className={cn(
+                    "inline-flex min-w-0 items-center gap-1",
+                    (isProcessing || hasWaitLine) && "max-w-[40%] shrink-0",
+                  )}
+                  title={`From ${senderLabel}`}
+                >
+                  <span className="shrink-0">From</span>
+                  {queuedMessage.initiator === "agent" &&
+                  queuedMessage.senderThreadId !== null ? (
+                    <span className="flex min-w-0 [&>.prompt-mention-pill]:text-2xs">
+                      <PromptMentionPill
+                        interactive={false}
+                        resource={{
+                          kind: "thread",
+                          threadId: queuedMessage.senderThreadId,
+                          label: senderLabel,
+                        }}
+                        serializedText={`@thread:${queuedMessage.senderThreadId}`}
+                      />
+                    </span>
+                  ) : (
+                    <span className="min-w-0 truncate">{senderLabel}</span>
+                  )}
+                </span>
+              )}
+              {senderLabel !== null && (isProcessing || hasWaitLine) ? (
+                <span aria-hidden className="shrink-0">
+                  ·
+                </span>
+              ) : null}
+              {isProcessing ? (
+                <QueuedMessageProcessingLine label={processingLabel} />
+              ) : hasWaitLine ? (
+                <QueuedMessageWaitLine
+                  pluginDisplayName={pluginDisplayName}
+                  queuedMessage={queuedMessage}
+                />
+              ) : null}
+            </div>
           ) : null}
         </div>
         {isProcessing ? null : (
@@ -868,7 +931,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                   "group-focus-within/dispatch-row:pointer-events-auto group-focus-within/dispatch-row:opacity-100",
                 )}
               >
-                {sendNowAllowed ? (
+                {sendAllowed ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -880,13 +943,13 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                           compact ? "size-7" : "size-8",
                         )}
                         disabled={actionDisabled || sendDisabled}
-                        onClick={() => onSendImmediately(queuedMessage.id)}
-                        aria-label={`Send queued message ${index + 1} now`}
+                        onClick={() => onSend(queuedMessage.id)}
+                        aria-label={sendAriaLabel}
                       >
                         <Icon name="Sent" className="size-4" aria-hidden />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Send now</TooltipContent>
+                    <TooltipContent>{sendLabel}</TooltipContent>
                   </Tooltip>
                 ) : null}
                 {queuedMessage.editable ? (
@@ -958,13 +1021,13 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-[7rem]">
-                {sendNowAllowed ? (
+                {sendAllowed ? (
                   <DropdownMenuItem
                     disabled={sendDisabled}
-                    onSelect={() => onSendImmediately(queuedMessage.id)}
+                    onSelect={() => onSend(queuedMessage.id)}
                   >
                     <Icon name="Sent" aria-hidden />
-                    Send now
+                    {sendLabel}
                   </DropdownMenuItem>
                 ) : null}
                 {queuedMessage.editable ? (
@@ -1130,17 +1193,19 @@ export function QueuedMessagesList({
   attachedToComposer,
   queuedMessages,
   resolveMentionLink,
+  sendAction,
   sendDisabled,
   actionDisabled,
   processingMessageId,
   processingAction,
   inlineEditor,
-  onSendImmediately,
+  onSend,
   onReorder,
   onSetGroupBoundary,
   onEdit,
   onDelete,
 }: QueuedMessagesListProps) {
+  const senderThreadMetadataById = useSenderThreadMetadataById();
   const processingLabel =
     processingAction === "edit"
       ? "Editing…"
@@ -1626,16 +1691,28 @@ export function QueuedMessagesList({
         <QueuedMessageRow
           key={queuedMessage.id}
           queuedMessage={queuedMessage}
+          senderLabel={
+            queuedMessage.initiator === "system"
+              ? "System"
+              : queuedMessage.initiator === "agent"
+                ? (senderThreadMetadataById.get(
+                    queuedMessage.senderThreadId ?? "",
+                  )?.title ??
+                  queuedMessage.senderThreadId ??
+                  "Agent")
+                : null
+          }
           resolveMentionLink={resolveMentionLink}
           index={messageIndex}
           isProcessing={processingMessageId === queuedMessage.id}
           processingLabel={processingLabel}
           dragDisabled={sortingDisabled || inlineEditor !== undefined}
+          sendAction={sendAction}
           sendDisabled={sendDisabled}
           actionDisabled={actionDisabled}
           compact={mode !== "workspace"}
           isGroupBoundary={messageIndex === groupBoundaryIndex}
-          onSendImmediately={onSendImmediately}
+          onSend={onSend}
           onEdit={handleEdit}
           onDelete={onDelete}
         />,

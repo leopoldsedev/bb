@@ -1,3 +1,7 @@
+import {
+  ActionMenuItem,
+  ActionMenuSeparator,
+} from "@/components/ui/action-menu-items";
 import type { Thread } from "@bb/domain";
 import { useCallback, useState, type ReactNode } from "react";
 import {
@@ -67,68 +71,6 @@ interface ThreadActionsMenuItemsProps extends ThreadActionsMenuBaseProps {
   onCompactStepChange?: (step: ThreadActionsCompactStep) => void;
   responsiveActions?: readonly ThreadActionsMenuResponsiveAction[];
   surface: ThreadActionsMenuSurface;
-}
-
-interface ThreadActionMenuItemProps {
-  children: ReactNode;
-  className?: string;
-  variant?: "default" | "destructive";
-  icon: IconName;
-  onSelect?: (event: Event) => void;
-  surface: ThreadActionsMenuSurface;
-}
-
-function ThreadActionMenuItem({
-  children,
-  className,
-  variant,
-  icon,
-  onSelect,
-  surface,
-}: ThreadActionMenuItemProps) {
-  const content = (
-    <>
-      <Icon name={icon} aria-hidden="true" />
-      {children}
-    </>
-  );
-
-  if (surface === "context") {
-    return (
-      <ContextMenuItem
-        className={cn(
-          className,
-          variant === "destructive" &&
-            "text-destructive focus:bg-destructive/15 focus:text-destructive data-[last-hovered]:bg-destructive/15 data-[last-hovered]:text-destructive",
-        )}
-        onSelect={onSelect}
-      >
-        {content}
-      </ContextMenuItem>
-    );
-  }
-
-  return (
-    <DropdownMenuItem
-      className={className}
-      variant={variant}
-      onSelect={onSelect}
-    >
-      {content}
-    </DropdownMenuItem>
-  );
-}
-
-function ThreadActionMenuSeparator({
-  surface,
-}: {
-  surface: ThreadActionsMenuSurface;
-}) {
-  return surface === "context" ? (
-    <ContextMenuSeparator />
-  ) : (
-    <DropdownMenuSeparator />
-  );
 }
 
 function ThreadSectionDestinationItem({
@@ -345,7 +287,7 @@ function ThreadActionsMenuItems({
       {responsiveActions.length > 0 ? (
         <>
           {responsiveActions.map((action) => (
-            <ThreadActionMenuItem
+            <ActionMenuItem
               key={action.label}
               surface={surface}
               icon={action.icon}
@@ -354,16 +296,16 @@ function ThreadActionsMenuItems({
               }}
             >
               {action.label}
-            </ThreadActionMenuItem>
+            </ActionMenuItem>
           ))}
           {showSeparators ? (
-            <ThreadActionMenuSeparator surface={surface} />
+            <ActionMenuSeparator surface={surface} />
           ) : null}
         </>
       ) : null}
       {onOpenInSplit ? (
         <>
-          <ThreadActionMenuItem
+          <ActionMenuItem
             surface={surface}
             icon="Columns2"
             onSelect={() => {
@@ -371,13 +313,13 @@ function ThreadActionsMenuItems({
             }}
           >
             Open in split
-          </ThreadActionMenuItem>
+          </ActionMenuItem>
           {showSeparators ? (
-            <ThreadActionMenuSeparator surface={surface} />
+            <ActionMenuSeparator surface={surface} />
           ) : null}
         </>
       ) : null}
-      <ThreadActionMenuItem
+      <ActionMenuItem
         surface={surface}
         icon="Copy"
         onSelect={() => {
@@ -388,8 +330,8 @@ function ThreadActionsMenuItems({
         }}
       >
         Copy thread link
-      </ThreadActionMenuItem>
-      <ThreadActionMenuItem
+      </ActionMenuItem>
+      <ActionMenuItem
         surface={surface}
         icon={isRead ? "Mail" : "MailOpen"}
         onSelect={() => {
@@ -397,8 +339,8 @@ function ThreadActionsMenuItems({
         }}
       >
         {isRead ? "Mark unread" : "Mark read"}
-      </ThreadActionMenuItem>
-      <ThreadActionMenuItem
+      </ActionMenuItem>
+      <ActionMenuItem
         surface={surface}
         icon={isPinned ? "PinOff" : "Pin"}
         onSelect={() => {
@@ -406,14 +348,14 @@ function ThreadActionsMenuItems({
         }}
       >
         {isPinned ? "Unpin" : "Pin"}
-      </ThreadActionMenuItem>
+      </ActionMenuItem>
       <ThreadSectionMoveMenu
         isDrawer={isDrawer}
         onOpenDrawerStep={() => onCompactStepChange?.("move")}
         surface={surface}
         thread={thread}
       />
-      <ThreadActionMenuItem
+      <ActionMenuItem
         surface={surface}
         icon="Edit"
         onSelect={() => {
@@ -423,9 +365,9 @@ function ThreadActionsMenuItems({
         }}
       >
         Rename
-      </ThreadActionMenuItem>
-      {showSeparators ? <ThreadActionMenuSeparator surface={surface} /> : null}
-      <ThreadActionMenuItem
+      </ActionMenuItem>
+      {showSeparators ? <ActionMenuSeparator surface={surface} /> : null}
+      <ActionMenuItem
         surface={surface}
         icon={isArchived ? "ArchiveRestore" : "Archive"}
         onSelect={() => {
@@ -437,8 +379,8 @@ function ThreadActionsMenuItems({
         }}
       >
         {isArchived ? "Unarchive" : "Archive"}
-      </ThreadActionMenuItem>
-      <ThreadActionMenuItem
+      </ActionMenuItem>
+      <ActionMenuItem
         surface={surface}
         icon="Trash2"
         variant="destructive"
@@ -449,7 +391,7 @@ function ThreadActionsMenuItems({
         }}
       >
         Delete
-      </ThreadActionMenuItem>
+      </ActionMenuItem>
     </>
   );
 }

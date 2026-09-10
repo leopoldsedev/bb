@@ -630,6 +630,36 @@ describe("acp bridge", () => {
     });
   });
 
+  it("uses Cursor CLI variants as reasoning metadata for bare ACP models", async () => {
+    const modelListId = sendModelList({
+      dialectId: "cursor",
+      parameterizedModelPicker: true,
+      modelPickerPrimaryModels: ["default", "gemini-3.8-flash"],
+      modelLines: [
+        "auto - Auto (default)",
+        "gemini-3.8-flash-low - Gemini 3.8 Flash Low",
+        "gemini-3.8-flash-medium - Gemini 3.8 Flash Medium",
+        "gemini-3.8-flash-high - Gemini 3.8 Flash High",
+      ].join("\n"),
+    });
+
+    const result = (await waitForResponse(modelListId)).result as {
+      models: {
+        id: string;
+        supportedReasoningEfforts: { reasoningEffort: string }[];
+      }[];
+    };
+    expect(result.models.map((model) => model.id)).toEqual([
+      "default",
+      "gemini-3.8-flash",
+    ]);
+    expect(
+      result.models[1]?.supportedReasoningEfforts.map(
+        (effort) => effort.reasoningEffort,
+      ),
+    ).toEqual(["low", "medium", "high"]);
+  });
+
   it("discovers ACP-native models and per-model reasoning from session configOptions", async () => {
     const modelListId = sendModelList({
       envVars: {
@@ -1529,6 +1559,23 @@ describe("acp bridge", () => {
     expect(completed).toMatchObject({ status: "completed" });
     expect(threadEventsOfType("turn/started")).toHaveLength(1);
     expect(agentMessageTexts()).toContain("echo:hello there");
+  });
+
+  it("rebuilds the agent with environment from a later turn", async () => {
+    const envVars = { FAKE_ACP_LOAD_SESSION: "1", FAKE_ACP_PROMPT_ERROR: "1" };
+    const { providerThreadId } = await startThread({ envVars });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "fresh environment", mentions: [] }],
+      options: executionOptions({
+        envVars: { FAKE_ACP_PROMPT_ERROR: "0" },
+        providerOptions: { acpLaunchSpec: acpLaunchSpec({ envVars }) },
+      }),
+    });
+
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    expect(await waitForTurnCompleted()).toMatchObject({ status: "completed" });
+    expect(agentMessageTexts()).toContain("echo:fresh environment");
+    expect(notifications("session/replaced")).toHaveLength(1);
   });
 
   it("authenticates ACP sessions with cached tokens when advertised", async () => {

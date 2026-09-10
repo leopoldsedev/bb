@@ -146,8 +146,8 @@ src/
                          ThreadActionsSheet (header "…" menu: handoff, new
                          thread in worktree, rename, pin, read state, move,
                          copy link, open in web, archive, delete),
-                         ThreadGitActionSheet + useThreadGitActions (commit /
-                         squash merge through the environment actions);
+                         ThreadGitActionSheet + useThreadGitActions (commit
+                         through the environment actions);
                          interactions/ — PendingInteractionBanner (approval /
                          user question / ask-user-question + secret-request
                          plugin forms / unsupported-plugin card), QuestionForm,
@@ -579,7 +579,7 @@ argument drives a dev client through Metro instead.
 - **Input**: tapping the terminal focuses xterm's hidden textarea and raises
   the keyboard (`keyboardDisplayRequiresUserAction={false}`); the accessory
   bar above it adds esc, tab, a sticky ctrl (applied to the next keystroke),
-  arrows, home / end, `-`, `/`, `|`, paste (`expo-clipboard`), a keyboard
+  arrows, home / end, `-`, `/`, `|`, paste, a keyboard
   key and, full screen, a "…" that opens the same menu as the header
   (rename / restart / new / close). Cursor keys follow DECCKM (SS3 in
   application mode), Ctrl+arrow sends `CSI 1;5<final>`.

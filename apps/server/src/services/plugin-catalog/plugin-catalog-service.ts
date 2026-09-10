@@ -61,6 +61,7 @@ import {
   entryIconName,
   entryIconTinted,
   entryRepositoryUrl,
+  entryOverview,
   entryScreenshotUrls,
   entrySourceDisplay,
   curatedMarketplaceManifestUrls,
@@ -485,6 +486,7 @@ export function createPluginCatalogService(deps: {
         ? { kind: "url", manifestUrl: row.manifestUrl }
         : { kind: "dir", root: row.manifestUrl },
     );
+    const overview = entryOverview(entry, deps.warn);
     return {
       entryId,
       pluginId,
@@ -500,6 +502,7 @@ export function createPluginCatalogService(deps: {
           ? {}
           : { categoryId: category.id, category: category.displayName }),
       screenshots,
+      ...(overview === undefined ? {} : { overview }),
       collections: [...args.collections],
       ...("publishedAt" in entry && typeof entry.publishedAt === "string"
         ? { publishedAt: entry.publishedAt }
@@ -1349,5 +1352,9 @@ function entryAuthor(entry: MarketplaceEntry): PluginCatalogAuthor {
     (entry.author.github === undefined
       ? null
       : `https://github.com/${entry.author.github}`);
-  return { name: entry.author.name, url };
+  return {
+    name: entry.author.name,
+    github: entry.author.github ?? null,
+    url,
+  };
 }

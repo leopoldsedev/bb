@@ -27,6 +27,7 @@ import {
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useReorderPinnedThread } from "@/hooks/mutations/thread-state-mutations";
 import {
   useCreateThreadSection,
@@ -48,7 +49,10 @@ import { BbHttpError } from "@bb/sdk/browser";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
-import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
+import {
+  AppCommandShortcutHint,
+  AppCommandShortcutPill,
+} from "@/components/commands/AppCommandShortcutHint";
 import {
   ThreadSectionCreateDialog,
   ThreadSectionRenameDialog,
@@ -119,6 +123,7 @@ import {
   type SidebarOrganizationMode,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
+import { useUiPreferencesReady } from "@/lib/ui-preferences/UiPreferencesSync";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -149,7 +154,7 @@ import {
 } from "./BuiltInSidebarSection";
 import { ReorderableSidebarSectionOrderList } from "./ReorderableSidebarSectionOrderList";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder";
-import { haveSameOrder } from "./usePersistedSidebarSectionOrder";
+import { haveSameOrder } from "@/lib/stored-order";
 import {
   resolveThreadTitleDisplayText,
   type ThreadTitleMentionResources,
@@ -161,15 +166,23 @@ interface ProjectListProps {
   isCreatingProject?: boolean;
 }
 
-interface ProjectListActionButtonsProps {
+interface ProjectListNewThreadActionProps {
   splitEnabled?: boolean;
   newThreadSplit?: {
     onPointerDown?: PointerEventHandler<HTMLElement>;
     openInSplit(): void;
   };
   onNewChat?: () => void;
+}
+
+interface ProjectListSearchThreadsActionProps {
   onSearchThreads?: () => void;
 }
+
+interface ProjectListActionButtonsProps
+  extends
+    ProjectListNewThreadActionProps,
+    ProjectListSearchThreadsActionProps {}
 
 interface ProjectListShellProps {
   children: ReactNode;
@@ -215,11 +228,6 @@ export const PROJECT_LIST_ACTION_BUTTON_CLASS = cn(
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   COARSE_POINTER_ROW_HEIGHT_CLASS,
   "min-w-0 cursor-pointer justify-start overflow-hidden font-normal ring-sidebar-ring focus-visible:ring-2 disabled:cursor-default disabled:opacity-70 max-md:pointer-coarse:[&_svg]:size-5",
-);
-
-const PROJECT_LIST_ACTION_ICON_BUTTON_CLASS = cn(
-  "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md text-sidebar-foreground/85 outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 disabled:cursor-default disabled:opacity-50",
-  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 );
 
 const PROJECT_LIST_SECTION_ACTION_BUTTON_CLASS = cn(
@@ -758,79 +766,110 @@ function ProjectListNavigationLoadingRow({
   );
 }
 
-export function ProjectListActionButtons({
+export function ProjectListNewThreadAction({
   splitEnabled = false,
   newThreadSplit,
   onNewChat,
-  onSearchThreads,
-}: ProjectListActionButtonsProps) {
-  const commandRunner = useAppCommandRunner();
+}: ProjectListNewThreadActionProps) {
   const isNewChatDisabled = !onNewChat;
   const newThreadShortcut = useAppCommandShortcut("thread.new");
-  const threadSearchShortcut = useAppCommandShortcut("thread.search");
   const newThreadSplitIndicator = usePaneContentSplitIndicator(
     { kind: "new-thread" },
     splitEnabled,
   );
 
   return (
-    <div className="space-y-1">
-      <div className="flex min-w-0 items-center gap-0.5">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "flex-1")}
-          onPointerDown={newThreadSplit?.onPointerDown}
-          onClick={(event) => {
-            if (event.metaKey || event.ctrlKey) {
-              newThreadSplit?.openInSplit();
-              return;
-            }
-            onNewChat?.();
-          }}
-          disabled={isNewChatDisabled}
-          aria-label={
-            newThreadShortcut
-              ? `New thread (${newThreadShortcut.label})`
-              : "New thread"
-          }
-          aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
-        >
-          <Icon name="MessageSquarePlus" />
-          <span className="flex min-w-0 flex-1 items-center gap-1.5">
-            <span className="min-w-0 truncate text-left">New thread</span>
-            {newThreadSplitIndicator.miniMap ? (
-              <SplitPaneMiniMap
-                slots={newThreadSplitIndicator.miniMap}
-                label="New thread — open in split"
-              />
-            ) : null}
-            <AppCommandShortcutHint shortcut={newThreadShortcut} />
-          </span>
-        </Button>
-        <span className="flex shrink-0 items-center gap-1">
-          <AppCommandShortcutHint shortcut={threadSearchShortcut} />
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            aria-label={
-              threadSearchShortcut
-                ? `Search threads (${threadSearchShortcut.label})`
-                : "Search threads"
-            }
-            aria-keyshortcuts={threadSearchShortcut?.ariaKeyshortcuts}
-            className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
-            onClick={(event) => {
-              onSearchThreads?.();
-              commandRunner.dispatch("thread.search", event.currentTarget);
-            }}
-          >
-            <Icon name="Search" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-          </Button>
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
+      onPointerDown={newThreadSplit?.onPointerDown}
+      onClick={(event) => {
+        if (event.metaKey || event.ctrlKey) {
+          newThreadSplit?.openInSplit();
+          return;
+        }
+        onNewChat?.();
+      }}
+      disabled={isNewChatDisabled}
+      aria-label={
+        newThreadShortcut
+          ? `New thread (${newThreadShortcut.label})`
+          : "New thread"
+      }
+      aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
+    >
+      <Icon name="MessageSquarePlus" />
+      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        <span className="min-w-0 flex-1 truncate text-left">New thread</span>
+        {newThreadSplitIndicator.miniMap ? (
+          <SplitPaneMiniMap
+            slots={newThreadSplitIndicator.miniMap}
+            label="New thread — open in split"
+          />
+        ) : null}
+        <AppCommandShortcutHint shortcut={newThreadShortcut} />
+      </span>
+    </Button>
+  );
+}
+
+export function ProjectListSearchThreadsAction({
+  onSearchThreads,
+}: ProjectListSearchThreadsActionProps) {
+  const commandRunner = useAppCommandRunner();
+  const threadSearchShortcut = useAppCommandShortcut("thread.search");
+
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      className={cn(
+        PROJECT_LIST_ACTION_BUTTON_CLASS,
+        "group/search-threads w-full pr-1",
+      )}
+      onClick={(event) => {
+        onSearchThreads?.();
+        commandRunner.dispatch("thread.search", event.currentTarget);
+      }}
+      aria-label={
+        threadSearchShortcut
+          ? `Search threads (${threadSearchShortcut.label})`
+          : "Search threads"
+      }
+      aria-keyshortcuts={threadSearchShortcut?.ariaKeyshortcuts}
+    >
+      <Icon name="Search" />
+      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        <span className="min-w-0 flex-1 truncate text-left">
+          Search threads
         </span>
-      </div>
+        {threadSearchShortcut ? (
+          <span className="inline-flex shrink-0 opacity-0 transition-opacity group-hover/search-threads:opacity-100 group-focus-visible/search-threads:opacity-100 max-md:pointer-coarse:hidden">
+            <AppCommandShortcutPill shortcut={threadSearchShortcut} />
+          </span>
+        ) : null}
+      </span>
+    </Button>
+  );
+}
+
+export function ProjectListActionButtons({
+  splitEnabled = false,
+  newThreadSplit,
+  onNewChat,
+  onSearchThreads,
+}: ProjectListActionButtonsProps) {
+  return (
+    <div className="space-y-1">
+      <ProjectListNewThreadAction
+        splitEnabled={splitEnabled}
+        newThreadSplit={newThreadSplit}
+        onNewChat={onNewChat}
+      />
+      <ProjectListSearchThreadsAction onSearchThreads={onSearchThreads} />
     </div>
   );
 }
@@ -867,13 +906,18 @@ export function ActiveSidebarModeSections({
   return renderProject();
 }
 
+function useSidebarProgressiveDisclosureEnabled(): boolean {
+  return (
+    useSystemConfig().data?.experiments.sidebarProgressiveDisclosure ?? false
+  );
+}
+
 interface ProjectModeSectionsProps extends BuiltInSectionRenderState {
   collapsedEnvironmentIds: Set<string>;
   collapsedThreadIds: Set<string>;
   compareThreads: ThreadComparator;
   draftThreadIds: ReadonlySet<string>;
   effectivePinnedThreadIds: ReadonlySet<string>;
-  isReady: boolean;
   onCreateProjectThread: (projectId: string) => void;
   onProjectSelect?: () => void;
   onToggleEnvironmentCollapsed: ToggleCollapsedId;
@@ -895,7 +939,6 @@ function ProjectModeSections({
   compareThreads,
   draftThreadIds,
   effectivePinnedThreadIds,
-  isReady,
   isSectionDisplayOptionsOpen,
   onCreateProjectThread,
   onProjectSelect,
@@ -911,6 +954,7 @@ function ProjectModeSections({
   threads,
   threadsSection,
 }: ProjectModeSectionsProps) {
+  const progressiveDisclosureEnabled = useSidebarProgressiveDisclosureEnabled();
   const [collapsedProjectIdList, setCollapsedProjectIdList] = useAtom(
     collapsedProjectIdsAtom,
   );
@@ -1008,16 +1052,16 @@ function ProjectModeSections({
     }
     return rows;
   }, [projectRows]);
-  const { onOrderChange, order, persistedOrder } = useSidebarModeSectionOrder({
-    mode: "project",
-    entitySectionIds: projectSectionIds,
-    showPinnedSection,
-    isReady,
-  });
-  const reorderDisabled = order.length < 2;
   const personalThreads =
     threadsByProject.get(PERSONAL_PROJECT_ID)?.filter(isSidebarProjectThread) ??
     [];
+  const { onOrderChange, order, persistedOrder } = useSidebarModeSectionOrder({
+    mode: "project",
+    entitySectionIds: projectSectionIds,
+    hasThreadsSection: personalThreads.length > 0 || projectRows.length === 0,
+    showPinnedSection,
+  });
+  const reorderDisabled = order.length < 2;
   const builtInSections: BuiltInSidebarSectionOptionsById = {
     pinned: pinnedSection,
     threads: {
@@ -1031,6 +1075,7 @@ function ProjectModeSections({
             status,
             threads: personalThreads,
           })}
+          progressiveDisclosureEnabled={progressiveDisclosureEnabled}
           selectedThreadId={selectedThreadId}
           collapsedThreadIds={collapsedThreadIds}
           collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -1069,6 +1114,7 @@ function ProjectModeSections({
             sortableId={sectionId}
             project={row.project}
             threadListState={row.threadListState}
+            progressiveDisclosureEnabled={progressiveDisclosureEnabled}
             selectedThreadId={selectedThreadId}
             isActive={row.isActive}
             isCollapsed={collapsedProjectIds.has(row.project.id)}
@@ -1097,7 +1143,6 @@ interface SectionModeSectionsProps extends BuiltInSectionRenderState {
   collapsedThreadIds: Set<string>;
   compareThreads: ThreadComparator;
   sections: readonly SidebarSectionDefinition[];
-  isReady: boolean;
   onCreateThreadInSection: (sectionId: string) => void;
   onProjectSelect?: () => void;
   onRemoveSection: (section: SidebarSectionDefinition) => void;
@@ -1128,7 +1173,6 @@ function SectionModeSections({
   compareThreads,
   effectivePinnedThreadIds,
   sections,
-  isReady,
   onCreateThreadInSection,
   onProjectSelect,
   onRemoveSection,
@@ -1166,7 +1210,6 @@ function SectionModeSections({
     mode: "chronological",
     entitySectionIds: threadSectionIds,
     showPinnedSection,
-    isReady,
   });
   const moveDestinations = useMemo<ThreadSectionMoveDestination[]>(() => {
     const destinationsBySidebarId = new Map(
@@ -1228,7 +1271,6 @@ interface MachineModeSectionsProps extends BuiltInSectionRenderState {
   compareThreads: ThreadComparator;
   draftThreadIds: ReadonlySet<string>;
   effectivePinnedThreadIds: ReadonlySet<string>;
-  isReady: boolean;
   onProjectSelect?: () => void;
   onToggleEnvironmentCollapsed: ToggleCollapsedId;
   onToggleThreadCollapsed: ToggleCollapsedId;
@@ -1248,7 +1290,6 @@ export function MachineModeSections({
   compareThreads,
   draftThreadIds,
   effectivePinnedThreadIds,
-  isReady,
   isSectionDisplayOptionsOpen,
   onProjectSelect,
   onToggleCollapsed,
@@ -1262,6 +1303,7 @@ export function MachineModeSections({
   threads,
   threadsSection,
 }: MachineModeSectionsProps) {
+  const progressiveDisclosureEnabled = useSidebarProgressiveDisclosureEnabled();
   const { data: hosts } = useHosts();
   const [collapsedMachineKeyList, setCollapsedMachineKeyList] = useAtom(
     sidebarCollapsedMachinesAtom,
@@ -1326,7 +1368,6 @@ export function MachineModeSections({
     entitySectionIds: machineSectionIds,
     hasThreadsSection: machineSections.length === 0,
     showPinnedSection,
-    isReady,
   });
   const reorderDisabled = order.length < 2;
   const builtInSections: BuiltInSidebarSectionOptionsById = {
@@ -1338,6 +1379,7 @@ export function MachineModeSections({
       content: (
         <ProjectThreadTree
           threadListState={allThreadsListState}
+          progressiveDisclosureEnabled={progressiveDisclosureEnabled}
           compareThreads={compareThreads}
           variant="section"
           selectedThreadId={selectedThreadId}
@@ -1389,6 +1431,7 @@ export function MachineModeSections({
           >
             <ProjectThreadTree
               threadListState={section.threadListState}
+              progressiveDisclosureEnabled={progressiveDisclosureEnabled}
               compareThreads={compareThreads}
               variant="section"
               selectedThreadId={selectedThreadId}
@@ -1439,6 +1482,7 @@ function ProjectListComponent({
     }
     return map;
   }, [threads]);
+  const uiPreferencesReady = useUiPreferencesReady();
   const projectsState = useConnectionAwareQueryState({
     hasResolvedData: projects !== undefined,
     isFetching: sidebarNavigationQuery.isFetching,
@@ -1896,7 +1940,7 @@ function ProjectListComponent({
     </ConfirmDeleteDialog>
   );
 
-  if (projectsState.status === "loading") {
+  if (projectsState.status === "loading" || !uiPreferencesReady) {
     return (
       <ProjectListShell>
         <ProjectListNavigationLoadingState />
@@ -1916,7 +1960,6 @@ function ProjectListComponent({
               pinnedSidebarState.effectivePinnedThreadIds
             }
             status={projectsState.status}
-            isReady={Boolean(sidebarNavigation)}
             showPinnedSection={hasPinnedSection}
             pinnedSection={pinnedSection}
             threadsSection={threadsSection}
@@ -1941,7 +1984,6 @@ function ProjectListComponent({
                 pinnedSidebarState.effectivePinnedThreadIds
               }
               status={projectsState.status}
-              isReady={Boolean(sidebarNavigation)}
               showPinnedSection={hasPinnedSection}
               sections={sections}
               pinnedSection={pinnedSection}
@@ -1987,7 +2029,6 @@ function ProjectListComponent({
                 pinnedSidebarState.effectivePinnedThreadIds
               }
               status={projectsState.status}
-              isReady={Boolean(sidebarNavigation)}
               showPinnedSection={hasPinnedSection}
               pinnedSection={pinnedSection}
               threadsSection={threadsSection}

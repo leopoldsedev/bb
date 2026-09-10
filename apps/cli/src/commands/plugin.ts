@@ -103,13 +103,15 @@ async function searchCatalog(
 }
 
 const pluginSettingDescriptorSchema = z.object({
-  type: z.enum(["string", "boolean", "select", "project"]),
+  type: z.enum(["string", "number", "boolean", "select", "project"]),
   label: z.string(),
   description: z.string().optional(),
   secret: z.literal(true).optional(),
-  default: z.union([z.string(), z.boolean()]).optional(),
+  default: z.union([z.string(), z.number().finite(), z.boolean()]).optional(),
   options: z.array(z.string()).optional(),
 });
+const negativeNumberValuePattern =
+  /^-(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 const pluginSettingsResultSchema = z.object({
   ok: z.boolean(),
   error: z.string().optional(),
@@ -740,7 +742,7 @@ function parseSettingValue(
   descriptor: PluginSettingDescriptor,
   key: string,
   raw: string,
-): string | boolean {
+): string | number | boolean {
   if (descriptor.type === "boolean") {
     if (raw === "true") return true;
     if (raw === "false") return false;
@@ -751,6 +753,17 @@ function parseSettingValue(
     console.error(
       `Setting "${key}" must be one of: ${descriptor.options?.join(", ") ?? ""}`,
     );
+    process.exit(1);
+  }
+  if (descriptor.type === "number") {
+    let value: unknown;
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      value = undefined;
+    }
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    console.error(`Setting "${key}" is a number — pass a finite number.`);
     process.exit(1);
   }
   return raw;
@@ -1549,6 +1562,8 @@ export function registerPluginCommands(
       "Show a plugin's settings, or change them: config <id> set <key> <value> | config <id> unset <key>",
     )
     .option("--json", "Output JSON")
+    .allowUnknownOption()
+    .allowExcessArguments()
     .action(
       action(
         async (
@@ -1557,7 +1572,28 @@ export function registerPluginCommands(
           key: string | undefined,
           value: string | undefined,
           opts: JsonOutputOptions,
+          command: Command,
         ) => {
+          const rawArgs = (program as Command & { rawArgs: string[] }).rawArgs;
+          const terminatorIndex = rawArgs.indexOf("--");
+          const valueIsOption =
+            value?.startsWith("-") === true &&
+            (terminatorIndex < 0 ||
+              terminatorIndex > rawArgs.lastIndexOf(value));
+          const valueIsUnknownOption =
+            valueIsOption &&
+            (actionName !== "set" || !negativeNumberValuePattern.test(value));
+          const unknownOption =
+            [id, actionName, key, ...command.args.slice(4)].find((argument) =>
+              argument?.startsWith("-"),
+            ) ?? (valueIsUnknownOption ? value : undefined);
+          if (unknownOption !== undefined)
+            command.error(`error: unknown option '${unknownOption}'`);
+          const expectedArgumentCount = actionName === "unset" ? 3 : 4;
+          if (command.args.length > expectedArgumentCount)
+            command.error(
+              `error: too many arguments for 'config'. Expected ${expectedArgumentCount} arguments but got ${command.args.length}.`,
+            );
           const settingsPath = `/${encodeURIComponent(id)}/settings`;
           if (actionName === undefined) {
             const result = pluginSettingsResultSchema.parse(
@@ -1589,7 +1625,7 @@ export function registerPluginCommands(
             );
             process.exit(1);
           }
-          let parsedValue: string | boolean | null = null;
+          let parsedValue: string | number | boolean | null = null;
           if (actionName === "set") {
             if (value === undefined) {
               console.error("Usage: bb plugin config <id> set <key> <value>");
@@ -1606,6 +1642,9 @@ export function registerPluginCommands(
                 `Unknown setting "${key}"${known ? ` — known settings: ${known}` : ""}`,
               );
               process.exit(1);
+            }
+            if (valueIsOption && descriptor.type !== "number") {
+              command.error(`error: unknown option '${value}'`);
             }
             parsedValue = parseSettingValue(descriptor, key, value);
           }

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useDebounceValue } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
 import { PLUGIN_CATALOG_CATEGORIES, pluginCatalogCategory } from "@bb/domain";
 import {
@@ -11,6 +10,7 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   ResourceBrowseCard,
   ResourceBrowseGrid,
@@ -32,7 +32,9 @@ import {
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
-import { PluginAuthorAvatar, pluginAuthorGithub } from "./PluginAuthorAvatar";
+import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
+import { PluginAuthorLink } from "./PluginAuthorLink";
+import { pluginAuthorGithub } from "./plugin-marketplace-author";
 import {
   PluginBrowseCategoryFilter,
   pluginBrowseSort,
@@ -85,7 +87,7 @@ export function BrowsePluginsTab({
   const [expandedShelves, setExpandedShelves] = useState<Set<string>>(
     () => new Set(),
   );
-  const [debouncedQuery] = useDebounceValue(query.trim(), 300);
+  const debouncedQuery = useDebouncedValue(query.trim(), 300);
   const searchQuery = usePluginCatalogSearch(debouncedQuery, { enabled: true });
   const catalog = searchQuery.data ?? { entries: [], collections: [] };
   const entries = useMemo(
@@ -96,7 +98,7 @@ export function BrowsePluginsTab({
   const sort =
     requestedSort === "most-installed" && !installsKnown ? null : requestedSort;
   const categoryOptions = useMemo(
-    () => categoryFilterOptions(entries, selectedCategories),
+    () => pluginCategoryFilterOptions(entries, selectedCategories),
     [entries, selectedCategories],
   );
   const filteredEntries = useMemo(() => {
@@ -312,7 +314,7 @@ export function BrowsePluginsTab({
   );
 }
 
-function categoryFilterOptions(
+export function pluginCategoryFilterOptions(
   entries: readonly PluginCatalogSearchEntry[],
   selected: readonly string[],
 ): PluginBrowseCategoryOption[] {
@@ -418,7 +420,7 @@ function BrowseShelf({
   );
 }
 
-function PluginCatalogGrid({
+export function PluginCatalogGrid({
   entries,
   showCategory,
   onInstall,
@@ -477,7 +479,19 @@ function PluginCatalogCard({
             github={pluginAuthorGithub(entry.author)}
             size="detail"
           />
-          <span className="truncate">By {authorName}</span>
+          <span className="truncate">
+            By{" "}
+            {entry.author === null ? (
+              authorName
+            ) : (
+              <PluginAuthorLink
+                entry={entry}
+                className="pointer-events-auto relative z-10 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                {authorName}
+              </PluginAuthorLink>
+            )}
+          </span>
         </span>
       }
       footerMeta={
@@ -509,6 +523,7 @@ function PluginCatalogCard({
               onInstall({
                 entryId: entry.entryId,
                 marketplace: entry.marketplace,
+                pluginId: entry.pluginId,
                 publisherLabel: entry.publisherLabel,
                 displayName: entry.displayName,
                 icon: entry.icon,

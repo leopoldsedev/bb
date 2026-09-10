@@ -18,6 +18,7 @@ export {
 };
 
 export const pluginRuntimeStatusSchema = z.enum([
+  "starting",
   "running",
   "error",
   "incompatible",
@@ -305,6 +306,13 @@ export const pluginSettingDescriptorSchema = z.discriminatedUnion("type", [
   z
     .object({
       ...pluginSettingBaseSchema,
+      type: z.literal("number"),
+      default: z.number().finite().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...pluginSettingBaseSchema,
       type: z.literal("select"),
       options: z.array(z.string().min(1)).min(1),
       default: z.string().optional(),
@@ -358,6 +366,7 @@ export const pluginCatalogStatusResponseSchema = z.object({
 
 export const pluginCatalogAuthorSchema = z.object({
   name: z.string(),
+  github: z.string().nullable().default(null),
   url: z.string().nullable(),
 });
 export type PluginCatalogAuthor = z.infer<typeof pluginCatalogAuthorSchema>;
@@ -390,6 +399,7 @@ export const pluginCatalogSearchResultSchema = z.object({
   categoryId: pluginCatalogCategoryIdSchema.optional(),
   category: z.string().optional(),
   screenshots: z.array(z.string()).default([]),
+  overview: z.string().optional(),
   collections: z.array(pluginCatalogCollectionMembershipSchema).default([]),
   publishedAt: z.iso.datetime({ offset: true }).optional(),
   updatedAt: z.iso.datetime({ offset: true }).optional(),
